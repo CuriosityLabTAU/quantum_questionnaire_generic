@@ -16,6 +16,8 @@ df['question_number'] = questions_guide['QID'].replace(QIDs.tolist(), qn)
 df = df.assign(**dict(zip(users_list, [None]*len(users_list)))) # add a column to each user
 df = pd.melt(df,id_vars=df.columns[~df.columns.isin(users_list)], value_vars=users_list, var_name='userid', value_name='prob')
 
+num_of_users = users_list.__len__()
+
 for qid in QIDs:
     current_guide = questions_guide[questions_guide['QID'] == qid]
 
@@ -24,17 +26,18 @@ for qid in QIDs:
 
     for i, crow in current_guide.iterrows():
         # updating the probability in the dataframe
-        df.loc[(df['QID'] == current_guide['QID'].tolist()[0]) & (df['option'] == current_guide['option'].tolist()[0]), 'prob'] =\
+        df.loc[(df['QID'] == crow['QID']) & (df['option'] == crow['option']), 'prob'] =\
             raw_df[current_qid_columns[crow['option'] - 1]][2:].tolist()
         # raw_df[current_qid_columns[crow['option'] - 1]][2:].astype('int').tolist()
 
     if ~np.isnan(current_guide['randomized'].tolist()[0]):
         cname = current_guide['qname'].tolist()[0]
-        current_rand = raw_df.columns[raw_df.columns.str.contains('DO_' + cname)]
+        current_rand = raw_df.columns[raw_df.columns.str.contains('DO_' + cname+'$')]
         current_rand = raw_df[current_rand][2:].values.astype('int')
 
-        questions_positions = np.asarray(crow.if_rand_with.split(','), dtype=int) - 1
-        df.loc[(df['QID'] == current_guide['QID'].tolist()[0]), 'position'] = questions_positions[current_rand]
+        questions_positions = np.asarray(crow.if_rand_with.split(','), dtype=int)
+        for j, u in enumerate(users_list):
+            df.loc[((df['QID'] == current_guide['QID'].tolist()[0]) & (df.userid == u)), 'position'] = questions_positions[current_rand[j]-1]
 
-        print('torr')
+df = df[~df['prob'].isna()]
 print('finished')
