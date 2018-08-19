@@ -1,43 +1,60 @@
 import pandas as pd
 import numpy as np
 
-data_path = 'data/'
-raw_data_file_name = 'Emma_and_Liz_Aug2018.csv'
-guide_name = 'questionnaire_guide.csv'
-raw_df = pd.read_csv(data_path + raw_data_file_name)
-questions_guide = pd.read_csv(data_path + guide_name)
 
-QIDs = questions_guide['QID'].unique()
-qn = np.arange(QIDs.__len__())
-users_list = raw_df['ResponseId'][2:]
+def read_and_reformat(data_path, raw_data_file_name, guide_name):
+    '''
+    Reading and reformatting the data from the generic quantum questionnaire.
+    :param data_path: Path to the directory that contains the data.
+    :param raw_data_file_name: The data file name.
+    :param guide_name: The guide file name - file that tales which qubits and fallacies are asked about in each question.
+    :return: df - dataframe containing all the data.
+    '''
 
-df = questions_guide.assign(**{'question_number': np.nan, 'answer': np.nan}) # assign new columns
-df['question_number'] = questions_guide['QID'].replace(QIDs.tolist(), qn)
-df = df.assign(**dict(zip(users_list, [None]*len(users_list)))) # add a column to each user
-df = pd.melt(df,id_vars=df.columns[~df.columns.isin(users_list)], value_vars=users_list, var_name='userid', value_name='prob')
+    raw_df = pd.read_csv(data_path + raw_data_file_name)  # read raw data
+    questions_guide = pd.read_csv(data_path + guide_name)  # read guide
 
-num_of_users = users_list.__len__()
+    QIDs = questions_guide['QID'].unique()  # questions IDs
+    qn = np.arange(QIDs.__len__())
+    users_list = raw_df['ResponseId'][2:]  # list of the users.
 
-for qid in QIDs:
-    current_guide = questions_guide[questions_guide['QID'] == qid]
+    df = questions_guide.assign(**{'question_number': np.nan})  # assign new columns
+    df['question_number'] = questions_guide['QID'].replace(QIDs.tolist(), qn)  # updating question number
+    df = df.assign(**dict(zip(users_list, [None] * len(users_list))))  # add a column to each user
+    df = pd.melt(df, id_vars=df.columns[~df.columns.isin(users_list)], value_vars=users_list, var_name='userid',
+                 value_name='prob')  # reshape the dataframe in a repeating order for each user.
 
-    current_qid = raw_df.columns[raw_df.columns.str.contains('QID' + str(qid))]
-    current_qid_columns = current_qid[~current_qid.str.contains('DO')].tolist()
+    for qid in QIDs:
+        current_guide = questions_guide[questions_guide['QID'] == qid]  # get the guide for the specific question
 
-    for i, crow in current_guide.iterrows():
-        # updating the probability in the dataframe
-        df.loc[(df['QID'] == crow['QID']) & (df['option'] == crow['option']), 'prob'] =\
-            raw_df[current_qid_columns[crow['option'] - 1]][2:].tolist()
-        # raw_df[current_qid_columns[crow['option'] - 1]][2:].astype('int').tolist()
+        current_qid = raw_df.columns[raw_df.columns.str.contains('QID' + str(qid))]
+        current_qid_columns = current_qid[~current_qid.str.contains('DO')].tolist()
 
-    if ~np.isnan(current_guide['randomized'].tolist()[0]):
-        cname = current_guide['qname'].tolist()[0]
-        current_rand = raw_df.columns[raw_df.columns.str.contains('DO_' + cname+'$')]
-        current_rand = raw_df[current_rand][2:].values.astype('int')
+        for i, crow in current_guide.iterrows():
+            # updating the probabilities in the dataframe
+            df.loc[(df['QID'] == crow['QID']) & (df['option'] == crow['option']), 'prob'] = \
+                raw_df[current_qid_columns[crow['option'] - 1]][2:].tolist()
 
-        questions_positions = np.asarray(crow.if_rand_with.split(','), dtype=int)
-        for j, u in enumerate(users_list):
-            df.loc[((df['QID'] == current_guide['QID'].tolist()[0]) & (df.userid == u)), 'position'] = questions_positions[current_rand[j]-1]
+        if ~np.isnan(current_guide['randomized'].tolist()[0]):
+            # if question is randomized, get the positions.
+            cname = current_guide['qname'].tolist()[0]
+            current_rand = raw_df.columns[raw_df.columns.str.contains('DO_' + cname + '$')]
+            current_rand = raw_df[current_rand][2:].values.astype('int')
 
-df = df[~df['prob'].isna()]
-print('finished')
+            questions_positions = np.asarray(crow.if_rand_with.split(','), dtype=int)
+            for j, u in enumerate(users_list):
+                df.loc[((df['QID'] == current_guide['QID'].tolist()[0]) & (df.userid == u)), 'position'] = \
+                questions_positions[current_rand[j] - 1]
+
+    df = df[~df['prob'].isna()]
+    print('finished reading and reformatting the data')
+    return df
+
+
+if __name__ == '__main__':
+    data_path = 'data/'
+    raw_data_file_name = 'Emma_and_Liz_Aug2018.csv'
+    guide_name = 'questionnaire_guide.csv'
+
+    df = read_and_reformat(data_path, raw_data_file_name, guide_name)
+    print('end')
